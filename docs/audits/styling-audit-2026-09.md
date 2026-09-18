@@ -1,7 +1,7 @@
 # Styling audit: fossunited.org and the `fossunited` repo
 
 **Date:** 18 September 2026
-**Scope:** public website pages on <https://fossunited.org> (27 routes, captured at 1440px light, 1440px dark and 390px mobile) and the styling sources in this repository (`fossunited/public/css/custom.css`, `fossunited/templates/base.css`, `tailwind.config.js`, per-page CSS under `fossunited/www/`, Jinja templates and web templates, and the Vue dashboard's Tailwind config).
+**Scope:** public website pages on <https://fossunited.org> (44 routes, captured at 1440px light, 1440px dark and 390px mobile, including the Frappe Builder and Web Page documents that exist only in the database; see Part 2) and the styling sources in this repository (`fossunited/public/css/custom.css`, `fossunited/templates/base.css`, `tailwind.config.js`, per-page CSS under `fossunited/www/`, Jinja templates and web templates, and the Vue dashboard's Tailwind config).
 **Method:** every page was loaded in headless Chromium, screenshotted, and probed for computed styles (font families, heading sizes, button styles, backgrounds, container widths, card radii, `data-theme`, horizontal overflow, failed requests and console errors). Screenshots referenced below live in [`images/styling-audit-2026-09/`](images/styling-audit-2026-09/). The live `custom.css` was diffed against the repo copy: only the `.v3-action-*` block differs, so repo findings apply to production.
 
 The dashboard at `/dashboard` requires a login and was audited from source only.
@@ -27,6 +27,8 @@ The site is mid-migration between two visual systems and it shows on almost ever
 | 11 | Code hygiene: 4,100-line `custom.css` with dead sections, `z-index: 999` on every button, broken font import on every page, duplicate icon stylesheets | Medium |
 | 12 | Broken assets and error responses visible to users | Low |
 | 13 | Links styled four different ways | Low |
+| 14 | Database-only pages: four Frappe Builder pages are live with no site chrome, no theme, their own fonts and unfinished content; 14 Web Page documents carry their own inline styling | High |
+| 15 | A Jinja macro leaks the literal text `{{ undefined value printed: parameter 'class' was not provided }}` into the `class` attribute on nine live pages | Medium |
 
 Recommendations are at the end, ordered by effort.
 
@@ -105,7 +107,7 @@ IndiaFOSS and FOSS Hack put it in their own nav bars instead (see finding 7). Le
 |---|---|
 | ![](images/styling-audit-2026-09/maintainers-may-light.png) | ![](images/styling-audit-2026-09/maintainers-may-dark.png) |
 
-The page's markup is a Web Page document, so the oklch values are in the database, not the repo. They should be replaced with `--v3-*` variables.
+The values come from a page-specific `--m-*` palette at [`custom.css` line 3131](../../fossunited/public/css/custom.css#L3131) (`--m-bg`, `--m-card-bg`, `--m-text-1` and so on), used by `www/maintainers-may/index.html`. It is a fourth colour vocabulary in the same stylesheet and should be folded into `--v3-*`.
 
 ---
 
@@ -279,6 +281,100 @@ Prose links are styled four ways: green with no underline on Home and Team (`#08
 
 ---
 
+# Part 2: pages that exist only in the database
+
+The sitemap lists 36,031 URLs. After removing user profiles (`/u/*`, 30,666), chapter and event routes (`/c/*`), hackathon projects (`/hack/*/p/*`) and blog posts, 38 routes remained that are not rendered by a template in this repo. Each was fetched and classified by the markers Frappe leaves in the HTML (`data-doctype="Web Page"` with `source-content-type`, the `__builder` marker of Frappe Builder, or the `v3-page` class of repo templates).
+
+| Route | Rendered by | Notes |
+|---|---|---|
+| `/landing` | **Frappe Builder** | Alternative home page. JetBrains Mono, monochrome, own nav |
+| `/seeduler` | **Frappe Builder** | "Live Scheduler" prototype, raw ISO timestamps, 1122px wide on mobile |
+| `/pages/indiafoss-backup` | **Frappe Builder** | Full copy of the IndiaFOSS 2025 site, still published |
+| `/pages/page-8076455c` | **Frappe Builder** | Untitled "My Page" scheduler prototype with placeholder "Text" |
+| `/pages/my-page-3d93` | Frappe Builder (403) | Unpublished, but listed in the sitemap |
+| `/home` (also `/`) | Web Page, Page Builder | Home page |
+| `/team`, `/city-communities`, `/industry-partners`, `/code-of-conduct`, `/privacy-policy`, `/public-policy`, `/refund-transfer-policy`, `/daily`, `/join`, `/events` | Web Page, Page Builder | Built from the web templates in `fossunited/fossunited/web_template/` |
+| `/stack`, `/volunteers`, `/first-commit` | Web Page, Page Builder | Same, but the web template outputs v3 markup |
+| `/non-profit`, `/terms-of-service` | Web Page, Markdown | |
+| `/newsletter`, `/timeline`, `/landing-1`, `/fh24/partner-projects` (+2 sub-pages) | Web Page, raw HTML | HTML pasted into the document |
+| `/contact` | Web Form | Frappe's default web-form styling |
+| `/get-tickets` | 403 | Listed in the sitemap, not permitted |
+| `/about` | 301 to `/team` | |
+
+The `/events` route is a Web Page, while `/events/timeline` is the repo template. Both are linked from the nav.
+
+## 14. Frappe Builder pages
+
+The four live Builder pages do not load the website theme or `custom.css`. They load Builder's `reset.css`, `/builder_assets/tokens.css` and a per-page generated stylesheet, so nothing in this repo applies to them: no nav, no footer, no `data-theme` attribute (dark mode preference is ignored entirely), no Inter from the site's font pipeline.
+
+| `/landing` | `/seeduler` |
+|---|---|
+| ![](images/styling-audit-2026-09/builder-landing-light.png) | ![](images/styling-audit-2026-09/builder-seeduler-light.png) |
+
+| `/pages/indiafoss-backup` | `/pages/page-8076455c` |
+|---|---|
+| ![](images/styling-audit-2026-09/builder-indiafoss-2025-backup-light.png) | ![](images/styling-audit-2026-09/builder-my-page-light.png) |
+
+Specific problems:
+
+- **[`/landing`](https://fossunited.org/landing)** is a complete alternative home page in JetBrains Mono (loaded from Google Fonts) with a black nav ("Community / Events / Initiatives / About") that does not match the real nav, hard-coded greys (`#ededed`, `#171717`, `#7c7c7c`) and three broken images (404 on `belpy.png`, `MAC_talk_wednesday_solutions.jpg` and a file whose name is a full sentence). It is publicly reachable and indexed via the sitemap.
+- **[`/seeduler`](https://fossunited.org/seeduler)** and **[`/pages/page-8076455c`](https://fossunited.org/pages/page-8076455c)** are two versions of a "Live Scheduler" prototype. One shows raw `2025-02-23T04:30:00Z` timestamps in red, the other has a literal placeholder block reading "Text" at the bottom and rows of duplicated dummy sessions. The first renders 1122px wide on a 390px phone.
+- **[`/pages/indiafoss-backup`](https://fossunited.org/pages/indiafoss-backup)** is a full copy of the 2025 IndiaFOSS site with its own nav ("Code of Conduct / Important Dates / Booth Application"), loads Inter twice from Google Fonts under the names `Inter` and `inter`, and requests a missing `/pages/profile_photo`.
+- All four fire a `417` on Frappe's page-view logging endpoint on every load.
+
+| `/landing` on mobile | `/seeduler` on mobile (page is 1122px wide) |
+|---|---|
+| ![](images/styling-audit-2026-09/builder-landing-mobile.png) | ![](images/styling-audit-2026-09/builder-seeduler-mobile-overflow.png) |
+
+Builder pages cannot be enumerated from outside without a login. The four above are the ones the sitemap exposes, so there may be more that are published but not in the sitemap.
+
+## 15. Web Page documents
+
+These pages do get the nav, footer and `custom.css`, but their content is authored in the Frappe desk, so their styling cannot be reviewed or changed through this repo.
+
+| `/events` (Web Page) vs `/events/timeline` (repo template) | `/public-policy` |
+|---|---|
+| ![](images/styling-audit-2026-09/webpage-events-light.png) | ![](images/styling-audit-2026-09/webpage-public-policy-light.png) |
+
+| `/daily` | `/join` |
+|---|---|
+| ![](images/styling-audit-2026-09/webpage-daily-light.png) | ![](images/styling-audit-2026-09/webpage-join-light.png) |
+
+| `/contact` (Web Form) | `/fh24/partner-projects` |
+|---|---|
+| ![](images/styling-audit-2026-09/webpage-contact-light.png) | ![](images/styling-audit-2026-09/webpage-fh24-partner-projects-light.png) |
+
+Findings:
+
+- **Two "events" pages.** [`/events`](https://fossunited.org/events) is a white legacy Web Page with a 64px green title and Tailwind buttons; [`/events/timeline`](https://fossunited.org/events/timeline) is the grey v3 listing. The nav's "Events" dropdown links to both.
+- **[`/landing-1`](https://fossunited.org/landing-1)** is a raw-HTML Web Page titled "Landing Trial-1": a design prototype with Source Serif 4 from Google Fonts, an `oklch` background, its own nav, on-page controls for switching between variants ("Rounded / Boxy", "Text-first / Split photo / Ticker") and an "I'm Lost" floating button. It is live, indexed, and 423px wide on mobile.
+
+  | Desktop | Mobile |
+  |---|---|
+  | ![](images/styling-audit-2026-09/webpage-landing-1-light.png) | ![](images/styling-audit-2026-09/webpage-landing-1-mobile.png) |
+
+- **[`/timeline`](https://fossunited.org/timeline)** is a raw-HTML Web Page that embeds a copy of the events timeline. It renders the site nav **twice** (a second "Home / Login" bar under the real one), loads the theme CSS and `custom.css` twice, uses a different placeholder illustration from `/events/timeline`, and requests `/{{ footer_logo }}` because an un-rendered Jinja expression was pasted into the HTML.
+
+  ![](images/styling-audit-2026-09/webpage-timeline-double-nav.png)
+
+- **[`/contact`](https://fossunited.org/contact)** is a stock Frappe Web Form: 72px `h1`, grey Bootstrap inputs and a small black "Send" button. None of it matches either site generation.
+- **[`/daily`](https://fossunited.org/daily)** has a broken "Raven Logo" image and uses white cards with 8px radius and Frappe's `.btn-primary` rather than v3 cards and buttons.
+- **[`/join`](https://fossunited.org/join)** and **[`/public-policy`](https://fossunited.org/public-policy)** have no `h1` (`/public-policy` has a 48px `h1` followed by a larger 56px `h2`). `/join` is a plain list of underlined links with no other styling.
+- **[`/fh24/partner-projects`](https://fossunited.org/fh24/partner-projects)** and its two sub-pages are the FOSS Hack 2024 partner-projects site: white, `InterVariable`, a green pill badge in a colour (`#b6dec5`) used nowhere else, and Bootstrap tabs.
+- The `/stack`, `/volunteers` and `/first-commit` Web Pages render v3 markup because their web templates in the repo do, which is the right pattern. `/first-commit` still has no `h1` and overflows on mobile.
+
+## 16. Jinja "undefined value" leak
+
+The `v3_navbar` macro in [`templates/macros/breadcrumb.html` line 61](../../fossunited/templates/macros/breadcrumb.html#L61) takes a `class` parameter with no default and writes it into a `class` attribute. Twelve call sites in the repo call `v3_navbar()` without a `class` argument, so Frappe's debug-undefined renders the literal text into the page:
+
+```html
+<div class="d-flex justify-content-between align-items-center {{ undefined value printed: parameter 'class' was not provided }}">
+```
+
+This is live on `/events/timeline`, `/grants`, `/stack`, `/volunteers`, `/maintainers-may`, `/first-commit`, `/timeline`, `/newsletter` and `/grants/directory`. It is harmless to layout (browsers treat the words as extra class names) but it is visible in the HTML, appears in `class` attribute selectors, and `fosshack.html` lines 48 and 92 have the same pattern. Fix: `{% macro v3_navbar(class='', ignore_index=None) %}`.
+
+---
+
 ## Recommendations
 
 ### Quick wins (a day or two, no design decisions needed)
@@ -287,11 +383,13 @@ Prose links are styled four ways: green with no underline on Home and Team (`#08
 2. **Move the theme toggle into the shared navbar** (`templates/includes/foss_navbar/`) and remove it from the breadcrumb macro, the clubs page and the jobs page. IndiaFOSS and FOSS Hack navs can include the same partial.
 3. **Fix the mobile overflow.** Wrap the four offending `.row` elements in a padded container or add `mx-0` / `overflow-x: clip` on the page root, and let the Grants Directory `.v3-btn-group` wrap.
 4. **Fix the clubs page palette.** Replace `bg-gray-800` / `bg-gray-200` / `text-gray-*` in `www/clubs/index.html` with `.v3-btn` classes.
-5. **Repoint Maintainers May** from oklch literals to `--v3-*` variables in the Web Page document.
+5. **Fold the Maintainers May `--m-*` palette** (`custom.css` line 3131) into the `--v3-*` variables so the page stops shipping its own colours.
 6. **Remove `z-index: 999` from `.v3-btn`.**
 7. **Fix the font import** in the Website Theme record (use an absolute `/assets/frappe/css/fonts/inter/inter.css`) and delete the duplicate import from `custom.css`, so only one Inter family is loaded.
 8. **Pin Tabler icons** to one version in one place and drop the duplicate `<link>` tags from the navbar and footer templates.
 9. **Fix the three broken assets** in finding 12.
+10. **Unpublish the prototypes.** `/landing`, `/landing-1`, `/seeduler`, `/pages/page-8076455c` and `/pages/indiafoss-backup` are live, indexed and linked from the sitemap. Unpublish them (or move them behind a login) and remove them from the sitemap. Delete or redirect `/timeline` to `/events/timeline`, and `/events` to `/events/timeline` unless the landing copy is wanted.
+11. **Default the `class` parameter** in `v3_navbar` and the two `fosshack.html` macros (finding 16).
 
 ### Consolidation (one sprint)
 
@@ -307,9 +405,10 @@ Prose links are styled four ways: green with no underline on Home and Team (`#08
 
 ### Migration (ongoing)
 
-15. **Move the legacy Web Page documents to v3.** Home, Team, City Communities, Industry Partners, Non-Profit, Code of Conduct, Privacy and the Blog listing are the remaining white pages. Home and Blog are the highest-traffic entry points, so they should go first; until they move, the site's first impression and its second impression disagree.
-16. **Prune `custom.css`** as pages migrate: remove the sections already marked TODO/FIXME, then run PurgeCSS with a narrower safelist.
-17. **Add a visual regression check** (the Playwright script used for this audit takes about four minutes for 27 pages × 3 modes) to CI, so drift is caught per PR rather than per audit.
+15. **Move the legacy Web Page documents to v3.** Home, Team, City Communities, Industry Partners, Non-Profit, Code of Conduct, Privacy, Public Policy, Refund Policy, Terms, Daily, Join, Events, Contact, the FOSS Hack 2024 partner pages and the Blog listing are the remaining white pages. Home and Blog are the highest-traffic entry points, so they should go first; until they move, the site's first impression and its second impression disagree. The `/stack`, `/volunteers` and `/first-commit` pattern (a Web Page whose web template lives in the repo and emits v3 markup) is the right target for the rest, because it keeps the styling reviewable in git.
+16. **Decide whether Frappe Builder stays.** If it does, give Builder pages a shared stylesheet that imports the `--v3-*` tokens and the site nav and footer, and add the theme-init script to Builder's page template so `data-theme` is honoured. If it does not, delete the remaining Builder pages after unpublishing them.
+17. **Prune `custom.css`** as pages migrate: remove the sections already marked TODO/FIXME, then run PurgeCSS with a narrower safelist.
+18. **Add a visual regression check** (the Playwright script used for this audit takes about four minutes for 27 pages × 3 modes) to CI, so drift is caught per PR rather than per audit.
 
 ---
 
@@ -344,6 +443,23 @@ Prose links are styled four ways: green with no underline on Home and Team (`#08
 | `/fosshack` | own system | `#f0f0f0` | Inter + Space Mono | 40px ×5 | yes | no |
 | `/hackathon/projects` | legacy | `#f5f7fa` | InterVariable | 403 page | no | no |
 | `/dashboard` | redirects to login | | | | | |
+| `/landing` | Frappe Builder | transparent | JetBrains Mono | none | ignored | no |
+| `/seeduler` | Frappe Builder | transparent | InterVar | none (h2 32px) | ignored | **yes** (1122px) |
+| `/pages/indiafoss-backup` | Frappe Builder | `#fafafa` | Inter (Google Fonts, twice) | none (h2 24px) | ignored | no |
+| `/pages/page-8076455c` | Frappe Builder | transparent | InterVar | none (h2 24px) | ignored | no |
+| `/contact` | Web Form | `#ffffff` | InterVariable | 72px | no | no |
+| `/daily` | Web Page | `#ffffff` | InterVariable | none (h2 24px) | no | no |
+| `/events` | Web Page | `#ffffff` | InterVariable + Inter | 64px | no | no |
+| `/join` | Web Page | `#ffffff` | InterVariable | none | no | no |
+| `/public-policy` | Web Page | `#ffffff` | InterVariable | 48px (h2 56px) | no | no |
+| `/refund-transfer-policy` | Web Page | `#ffffff` | InterVariable | 48px | no | no |
+| `/terms-of-service` | Web Page (Markdown) | `#ffffff` | InterVariable | none (h2 30px) | no | no |
+| `/landing-1` | Web Page (HTML) | `oklch(0.98 0.002 250)` | Inter + Source Serif 4 | 35px ×3 | no | **yes** (423px) |
+| `/timeline` | Web Page (HTML) | `#f0f0f0` | Inter | 35px | yes | **yes** |
+| `/first-commit` | Web Page → v3 | `#f0f0f0` | Inter | none (h2 16px) | yes | **yes** |
+| `/fh24/partner-projects` | Web Page (HTML) | `#ffffff` | InterVariable | 35px | no | no |
+| `/hack/fosshack26` | v3 (repo) | `#f0f0f0` | Inter + Space Mono | 32px | yes | **yes** |
+| `/hack/fosshack26/p/…` | v3 (repo) | `#f0f0f0` | Inter | 24px | yes | no |
 
 ### Reproducing the capture
 
