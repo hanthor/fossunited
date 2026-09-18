@@ -27,8 +27,9 @@ The site is mid-migration between two visual systems and it shows on almost ever
 | 11 | Code hygiene: 4,100-line `custom.css` with dead sections, `z-index: 999` on every button, broken font import on every page, duplicate icon stylesheets | Medium |
 | 12 | Broken assets and error responses visible to users | Low |
 | 13 | Links styled four different ways | Low |
-| 14 | Database-only pages: four Frappe Builder pages are live with no site chrome, no theme, their own fonts and unfinished content; 14 Web Page documents carry their own inline styling | High |
-| 15 | A Jinja macro leaks the literal text `{{ undefined value printed: parameter 'class' was not provided }}` into the `class` attribute on nine live pages | Medium |
+| 14–15 | Database-only pages: four Frappe Builder pages are live with no site chrome, no theme, their own fonts and unfinished content; 14 Web Page documents carry their own inline styling | High |
+| 16 | A Jinja macro leaks the literal text `{{ undefined value printed: parameter 'class' was not provided }}` into the `class` attribute on nine live pages | Medium |
+| 17 | IndiaFOSS: seven different headers across 26 routes, with the year selector leading between them (Part 3) | High |
 
 Recommendations are at the end, ordered by effort.
 
@@ -372,6 +373,83 @@ The `v3_navbar` macro in [`templates/macros/breadcrumb.html` line 61](../../foss
 ```
 
 This is live on `/events/timeline`, `/grants`, `/stack`, `/volunteers`, `/maintainers-may`, `/first-commit`, `/timeline`, `/newsletter` and `/grants/directory`. It is harmless to layout (browsers treat the words as extra class names) but it is visible in the HTML, appears in `class` attribute selectors, and `fosshack.html` lines 48 and 92 have the same pattern. Fix: `{% macro v3_navbar(class='', ignore_index=None) %}`.
+
+---
+
+# Part 3: IndiaFOSS headers
+
+26 IndiaFOSS routes (everything under `/indiafoss/*` and `/c/indiafoss/*` in the sitemap, plus the Builder backup) were captured at 1440px and 390px and the top 160px of each page measured. **Seven different headers are live.** The year selector in the main header links to pages that use three of the other six, so a visitor who changes year loses the header they just used.
+
+![Desktop headers, every IndiaFOSS route in sitemap order](images/styling-audit-2026-09/indiafoss-headers-desktop.png)
+
+## 17. The seven header variants
+
+| | Variant | Routes | Logo | Height | Links | Year select | Theme toggle | CTA |
+|---|---|---|---|---|---|---|---|---|
+| A | IndiaFOSS event header, full | `/indiafoss`, `/indiafoss/2026`, `/c/indiafoss/2026` | IndiaFOSS wordmark | 60px | Archive, Statistics | yes | yes | Get Tickets |
+| B | Event header, listing variant | `/indiafoss/archive` (Speakers only), `/indiafoss/speakers` (Archive + Speakers) | IndiaFOSS wordmark | 60px | differs per page | yes | yes | none |
+| C | Event header, stripped | `/indiafoss/2026/stats`, `/indiafoss/2026/booths`, `/indiafoss/awards` | IndiaFOSS wordmark | 59px | **none** | no | yes | none; a "← Main page" button in the body instead |
+| D | Frappe Builder header | `/indiafoss/2025`, `/indiafoss/2025/devrooms`, `/indiafoss/2026/devrooms`, `/pages/indiafoss-backup` | **FOSS United** logo | 80px | uppercase, differs per page (Code of Conduct / FOSS United Home / Participant Guide / Stats / Important Dates / Booth Application) | no | **no** | none |
+| E | Standard FOSS United site nav | `/indiafoss/guide`, `/indiafoss/guide/travel`, `/indiafoss/speaker-guide`, `/indiafoss/cp-prospectus`, `/indiafoss/2025/stats`, `/indiafoss/2026/pre-events`, `/c/indiafoss`, `/c/indiafoss/2026/workshops`, `/c/indiafoss/maintainer-summit`, `/c/indiafoss/2026communi-con` | FOSS United logo | 85px | About / Grants / Policy / Events / Blog … | no | only on v3 pages | none |
+| F | 2024 page | `/indiafoss/2024` | none visible | black banner + 78px hero links | Code of Conduct, Travel Guide, Transfer Tickets | no | no | none |
+| G | Dashboard header | `/indiafoss/tickets` (redirects to `/dashboard/buy-tickets`) | none | 53px, white, sticky | Login | no | no | none |
+
+| A: `/indiafoss/2026` | B: `/indiafoss/archive` |
+|---|---|
+| ![](images/styling-audit-2026-09/if-header-a-event-home.png) | ![](images/styling-audit-2026-09/if-header-b-archive.png) |
+
+| C: `/indiafoss/2026/stats` (links gone) | D: `/indiafoss/2026/devrooms` (Builder, FOSS United logo) |
+|---|---|
+| ![](images/styling-audit-2026-09/if-header-c-stats-stripped.png) | ![](images/styling-audit-2026-09/if-header-d-builder-devrooms.png) |
+
+| D: `/indiafoss/2025` (Builder, different links again) | E: `/indiafoss/guide` (site nav, no IndiaFOSS identity) |
+|---|---|
+| ![](images/styling-audit-2026-09/if-header-d-builder-2025.png) | ![](images/styling-audit-2026-09/if-header-e-site-nav-guide.png) |
+
+| E: `/c/indiafoss/2026/workshops` (site nav + breadcrumb) | F: `/indiafoss/2024` |
+|---|---|
+| ![](images/styling-audit-2026-09/if-header-e-site-nav-workshops.png) | ![](images/styling-audit-2026-09/if-header-f-2024-banner.png) |
+
+![G: /indiafoss/tickets lands in the dashboard with a third header](images/styling-audit-2026-09/if-header-g-tickets-dashboard.png)
+
+**Why it happens.** There is one good header in the repo, the `if_header` macro in [`templates/macros/indiafoss.html` line 13](../../fossunited/templates/macros/indiafoss.html#L13). Only four templates call it (`2026/index.html`, `archive`, `speakers`, `speaker_talks`), and each passes different `show_*` flags, which produces variants A and B. Variant C is Web Page documents (`stats`, `booths`, `awards`) where someone pasted a copy of the header HTML and dropped the links. Variant D is Frappe Builder, which cannot include a Jinja macro. Variant E is Markdown and HTML Web Pages that never opted out of the site nav, plus the chapter-event template. F is a 2024 Web Page with its own hero. G is the Vue dashboard.
+
+Related defects found on the way:
+
+- `/indiafoss/2026/stats`, `/booths` and `/awards` have no way back except a "← Main page" button placed in the body, and the wordmark on those pages is the only navigation.
+- `/indiafoss/awards` renders the "IndiaFOSS 2026" hero (dates, venue) under a page whose `h1` is "FOSS Awards".
+- `/indiafoss/2026/pre-events` 301-redirects to `/indiafoss/2026/parallel`, titled "IF26 Pre-Events Side Quests", which uses the site nav plus a full-width black masthead: a fourth look for a page linked from the main event page.
+- `/indiafoss/speaker_talks` returns 404 even though `www/indiafoss/speaker_talks/index.html` exists (the controller requires a speaker parameter and falls through to the site 404 with the site nav).
+- On mobile, A/B/C show toggle + hamburger, D shows a hamburger only, E shows the site hamburger only, and the Builder pages' hamburger opens a different menu again.
+
+![Mobile headers](images/styling-audit-2026-09/indiafoss-headers-mobile.png)
+
+## Recommendations for IndiaFOSS headers
+
+**Target: one header on every route under `/indiafoss/*`.** Spec, based on variant A which already exists:
+
+| Slot | Content | Rule |
+|---|---|---|
+| Left | IndiaFOSS wordmark, links to `/indiafoss` | always |
+| Links (desktop) | Schedule · Speakers · Archive · Statistics | always the same four, in this order; a link is disabled (not hidden) when its page does not exist for the selected year |
+| Year select | current year first, then previous editions | always; every option must land on a page with this same header |
+| Theme toggle | moon/sun | always, including Builder and Web Page routes |
+| CTA | "Get Tickets" while tickets are on sale, "Watch Talks" after the event, nothing otherwise | driven by the same `ticket_btn` data `2026/index.py` already computes |
+| Height | 60px | matches A; drop the 59px/80px/85px variants |
+| Mobile | wordmark left; toggle + menu button right; the menu contains the same four links, year select and CTA | one markup, the one already in `if_header` |
+
+Steps, in order of value:
+
+1. **Make `if_header` the only header.** Remove the `show_archive`, `show_speakers`, `show_statistics`, `show_schedule` flags (or default them all to `True`) so `archive` and `speakers` stop rendering different link sets. Compute `ticket_url` once in a shared context helper and pass it from every caller, so listing pages get the same CTA as the home page.
+2. **Add an `indiafoss_base.html`** that extends `foss_base.html` with `hide_nav=True` and `hide_footer=True`, renders `if_header` and `if_footer` around a `page_content` block, and applies `.v3-page`. Point `2026/index.html`, `archive`, `speakers` and `speaker_talks` at it.
+3. **Move the three Web Page HTML documents into the repo** as `www/indiafoss/2026/stats`, `booths` and `awards` templates extending `indiafoss_base.html`. That deletes the pasted header copies (variant C) and the "← Main page" buttons. The `awards` page should stop rendering the 2026 hero.
+4. **Give the Markdown Web Pages the same base.** `guide`, `guide/travel`, `speaker-guide` and `cp-prospectus` are IndiaFOSS content shown under the FOSS United nav (variant E) with no way to reach the event. Either move them to repo templates under `indiafoss_base.html`, or set their Web Page "template" to a small wrapper that renders `if_header` above the Markdown body.
+5. **Retire the Builder pages or re-skin them.** `/indiafoss/2025`, `/indiafoss/2025/devrooms` and `/indiafoss/2026/devrooms` should be rebuilt as repo templates with `indiafoss_base.html` (devrooms is a list, the easiest case). If Builder must stay for them, give the Builder header the IndiaFOSS wordmark, the same four links, 60px height and the theme toggle so it at least reads as the same site.
+6. **Archive years consistently.** `/indiafoss/2024` (Web Page with the "Please check current IndiaFOSS" banner) and `/indiafoss/2025` (Builder) should become archive pages under the same header, with the year select showing the archived year as selected. The banner belongs inside the page body, not in place of the header.
+7. **Pre-events / parallel.** Render `/indiafoss/2026/parallel` with `indiafoss_base.html` and make its black masthead a page section under the standard header, or fold it into the 2026 page.
+8. **Chapter-event pages under `/c/indiafoss/*`** (workshops, Maintainer Summit, Communi-Con) are platform events and can keep the site nav, but add a slim "Part of IndiaFOSS 2026 → back to event" strip above the event card so the two header worlds are visibly connected, and link to them from the IndiaFOSS header's Schedule.
+9. **Tickets.** `/indiafoss/tickets` hands off to the dashboard, which has its own header. Add the IndiaFOSS wordmark and a "Back to IndiaFOSS 2026" link to the dashboard's buy-tickets header, or pass the event slug so the header can show the event name.
+10. **Fix `/indiafoss/speaker_talks`** to either list talks or redirect to `/indiafoss/speakers` instead of returning the site 404.
 
 ---
 
